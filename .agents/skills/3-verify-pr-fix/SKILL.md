@@ -55,21 +55,22 @@ git stash list | head -3             # warn if there are stashes the user may fo
 # in detached state (CI worktrees, prior PR checkouts), so fall back to the SHA.
 CURRENT_REF=$(git symbolic-ref -q --short HEAD || git rev-parse HEAD)
 
-# Force-update the local pr-$PR ref so a leftover from a failed prior run does
-# not block the fetch.
-git fetch origin "+pull/$PR/head:pr-$PR"
-git checkout pr-$PR
+# Fetch the PR head into FETCH_HEAD only and check it out as a detached HEAD.
+# Skipping a named local branch avoids clobbering a maintainer's existing
+# `pr-$PR` work and removes the cleanup-time `git branch -D` foot-gun.
+git fetch origin "pull/$PR/head"
+PR_SHA=$(git rev-parse FETCH_HEAD)
+git checkout --detach "$PR_SHA"
 
-# Any early exit after this point must still return to $CURRENT_REF and clear
-# pr-$PR + /tmp scratch files. Install a single trap so the fail-fast guards in
-# Phase 4 do not strand the user on the PR branch.
+# Any early exit after this point must still return to $CURRENT_REF + clear
+# /tmp scratch files. Install a single trap so the fail-fast guards in Phase 4
+# do not strand the user on the PR commit.
 cleanup_verify() {
   rc=$?
   trap - EXIT INT TERM
   kill $SERVER_PID 2>/dev/null
   wait $SERVER_PID 2>/dev/null
   git checkout "$CURRENT_REF" 2>/dev/null
-  git branch -D pr-$PR 2>/dev/null
   rm -f /tmp/verify-pr-$PR.json /tmp/verify-pr-$PR-headers /tmp/verify-pr-$PR.log /tmp/pr-$PR-meta.json
   exit $rc
 }
@@ -77,7 +78,7 @@ trap cleanup_verify EXIT INT TERM
 
 # Scope sanity check
 gh pr view $PR --repo $REPO --json files --jq '.files[].path' | head -20
-git diff --stat $(git merge-base pr-$PR origin/main)..pr-$PR | tail -10
+git diff --stat $(git merge-base "$PR_SHA" origin/main)..$PR_SHA | tail -10
 ```
 
 If the PR has merge conflicts with `main` (`mergeStateStatus: DIRTY`), continue anyway — local checkout still works — but note it in the verdict.
@@ -151,7 +152,7 @@ For locale-sensitive bugs, run **one extra call** against a deliberately non-Eng
 Read the actual diff, not just the file list:
 
 ```bash
-git diff $(git merge-base pr-$PR origin/main)..pr-$PR
+git diff $(git merge-base "$PR_SHA" origin/main)..$PR_SHA
 ```
 
 Hard flags (any one = downgrade from ✓ to ⚠):
@@ -180,8 +181,9 @@ Then one short paragraph: what the PR actually changes, why it does/doesn't addr
 
 ```bash
 # The EXIT trap installed in Phase 3 runs automatically — it returns to
-# $CURRENT_REF, deletes pr-$PR, and cleans up /tmp/verify-pr-$PR.* on any exit
-# (success, error, Ctrl-C). Nothing extra to do here.
+# $CURRENT_REF and cleans up /tmp/verify-pr-$PR.* on any exit (success, error,
+# Ctrl-C). No local branch was ever created (Phase 3 uses a detached HEAD on
+# FETCH_HEAD), so nothing needs deleting either.
 # Keep /tmp/repro-issue-$ISSUE-main.json + meta.json so the user can re-verify against another PR later.
 ```
 

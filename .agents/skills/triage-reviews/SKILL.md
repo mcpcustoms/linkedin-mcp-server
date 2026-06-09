@@ -62,20 +62,21 @@ Workflow per finding:
    - Valid + unfixed: `Valid, deferred to follow-up. Reason: <why>.`
    - False positive: `False positive. <one-line evidence: file:line shows X, or doc link Y>.`
 
-2. **Resolve the thread**.
+2. **Resolve the thread only when the finding is Fixed or False positive.** `Valid + unfixed` threads must stay open so the PR view continues to surface the real bug. Resolving them would let the PR look ready while the bug is still in the code. Leave the maintainer to close those threads when they file the follow-up.
 
-GitHub's review threads can only be resolved via GraphQL (REST has no endpoint). The thread ID is a GraphQL node ID, not the REST comment ID, so fetch both together:
+GitHub's review threads can only be resolved via GraphQL (REST has no endpoint). The thread ID is a GraphQL node ID, not the REST comment ID, so fetch both together. Use `--paginate` so PRs with more than 100 threads are covered, the page size cap is per-request not total:
 
 ```bash
 PR=<pr-number>
 OWNER=<owner>
 REPO=<repo>
 
-gh api graphql -f query="
-  query {
-    repository(owner: \"$OWNER\", name: \"$REPO\") {
-      pullRequest(number: $PR) {
-        reviewThreads(first: 100) {
+gh api graphql --paginate -f query='
+  query($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100, after: $endCursor) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             isResolved
@@ -84,7 +85,8 @@ gh api graphql -f query="
         }
       }
     }
-  }" \
+  }' \
+  -F owner="$OWNER" -F repo="$REPO" -F pr=$PR \
   --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | {threadId: .id, commentId: .comments.nodes[0].databaseId, path: .comments.nodes[0].path, line: .comments.nodes[0].line}' \
   > /tmp/triage-threads-$PR.json
 ```
@@ -96,7 +98,7 @@ Each entry now has `{threadId, commentId, path, line}`. Match it against your Ph
 gh api -X POST "/repos/$OWNER/$REPO/pulls/$PR/comments/$COMMENT_ID/replies" \
   -f body="Fixed in $SHORT_SHA. <one-line>."
 
-# Resolve the thread (GraphQL)
+# Resolve the thread (GraphQL) — Fixed and False-positive only. SKIP for Valid+unfixed.
 gh api graphql -f query="
   mutation {
     resolveReviewThread(input: {threadId: \"$THREAD_ID\"}) {
