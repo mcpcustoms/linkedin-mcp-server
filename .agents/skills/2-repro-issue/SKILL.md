@@ -85,6 +85,7 @@ curl -s -D /tmp/repro-$NUM-headers -X POST http://127.0.0.1:$PORT/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"repro-issue","version":"1.0"}}}' > /dev/null
 
 SESSION_ID=$(grep -i 'Mcp-Session-Id' /tmp/repro-$NUM-headers | awk '{print $2}' | tr -d '\r')
+[ -z "$SESSION_ID" ] && { echo "MCP initialize returned no Mcp-Session-Id. Tail of /tmp/repro-$NUM.log:" >&2; tail -20 /tmp/repro-$NUM.log >&2; kill $SERVER_PID 2>/dev/null; exit 1; }
 
 curl -s -X POST http://127.0.0.1:$PORT/mcp \
   -H "Content-Type: application/json" \

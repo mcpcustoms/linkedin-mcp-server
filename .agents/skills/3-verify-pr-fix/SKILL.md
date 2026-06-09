@@ -32,6 +32,9 @@ Both must exist. The meta file is how this skill replays the *exact* same call i
 
 ```bash
 ls -la /tmp/repro-issue-$ISSUE-main.json /tmp/repro-issue-$ISSUE-meta.json 2>&1
+# Both files must exist AND be non-empty. ls alone never fails the script, so
+# guard each path before we touch the PR branch or LinkedIn.
+[ -s /tmp/repro-issue-$ISSUE-main.json ] || { echo "Missing or empty response baseline. Re-run /2-repro-issue $ISSUE." >&2; exit 1; }
 [ -s /tmp/repro-issue-$ISSUE-meta.json ] || { echo "Missing or empty meta file. Re-run /2-repro-issue $ISSUE." >&2; exit 1; }
 TOOL=$(jq -r .tool /tmp/repro-issue-$ISSUE-meta.json)
 ARGS_JSON=$(jq -c .arguments /tmp/repro-issue-$ISSUE-meta.json)
@@ -56,6 +59,21 @@ CURRENT_REF=$(git symbolic-ref -q --short HEAD || git rev-parse HEAD)
 # not block the fetch.
 git fetch origin "+pull/$PR/head:pr-$PR"
 git checkout pr-$PR
+
+# Any early exit after this point must still return to $CURRENT_REF and clear
+# pr-$PR + /tmp scratch files. Install a single trap so the fail-fast guards in
+# Phase 4 do not strand the user on the PR branch.
+cleanup_verify() {
+  rc=$?
+  trap - EXIT INT TERM
+  kill $SERVER_PID 2>/dev/null
+  wait $SERVER_PID 2>/dev/null
+  git checkout "$CURRENT_REF" 2>/dev/null
+  git branch -D pr-$PR 2>/dev/null
+  rm -f /tmp/verify-pr-$PR.json /tmp/verify-pr-$PR-headers /tmp/verify-pr-$PR.log /tmp/pr-$PR-meta.json
+  exit $rc
+}
+trap cleanup_verify EXIT INT TERM
 
 # Scope sanity check
 gh pr view $PR --repo $REPO --json files --jq '.files[].path' | head -20
@@ -161,9 +179,9 @@ Then one short paragraph: what the PR actually changes, why it does/doesn't addr
 ## Phase 8 — Cleanup
 
 ```bash
-git checkout "$CURRENT_REF"
-git branch -D pr-$PR 2>/dev/null
-rm -f /tmp/verify-pr-$PR.json /tmp/verify-pr-$PR-headers /tmp/verify-pr-$PR.log /tmp/pr-$PR-meta.json
+# The EXIT trap installed in Phase 3 runs automatically — it returns to
+# $CURRENT_REF, deletes pr-$PR, and cleans up /tmp/verify-pr-$PR.* on any exit
+# (success, error, Ctrl-C). Nothing extra to do here.
 # Keep /tmp/repro-issue-$ISSUE-main.json + meta.json so the user can re-verify against another PR later.
 ```
 
