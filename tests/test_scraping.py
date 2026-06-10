@@ -2522,6 +2522,10 @@ class TestStripConversationChrome:
             == "Maximize compose field\nis the label I keep seeing"
         )
 
+    def test_quoted_companion_with_suffix_does_not_confirm_composer(self):
+        text = "Hello!\nMaximize compose field\nOpen send options is what I clicked"
+        assert strip_conversation_chrome(text) == text
+
     def test_distant_companion_text_does_not_confirm_composer(self):
         filler = "\n".join(f"message {n}" for n in range(10))
         text = (
