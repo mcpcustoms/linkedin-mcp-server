@@ -2526,6 +2526,14 @@ class TestStripConversationChrome:
         text = "Hello!\nMaximize compose field\nOpen send options is what I clicked"
         assert strip_conversation_chrome(text) == text
 
+    def test_quoted_attach_text_does_not_confirm_composer(self):
+        text = (
+            "Hello!\n"
+            "Maximize compose field\n"
+            "Attach an image to your conversation with Grace is the label I clicked"
+        )
+        assert strip_conversation_chrome(text) == text
+
     def test_distant_companion_text_does_not_confirm_composer(self):
         filler = "\n".join(f"message {n}" for n in range(10))
         text = (

@@ -476,13 +476,13 @@ class _MessagingChromeTable:
     thread_header_prefix: str
     # First control of the trailing message-composer block.
     composer_start: str
-    # Other controls of the composer block. At least one must follow a
-    # ``composer_start`` candidate to confirm it is the real composer rather
-    # than a message quoting the label. Standalone controls match exactly so
-    # quoted control text with a commentary suffix can't confirm; only
-    # controls that embed the participant name match by prefix.
-    composer_companions_exact: tuple[str, ...]
-    composer_companion_prefixes: tuple[str, ...]
+    # Standalone controls of the composer block, matched exactly. At least
+    # one must follow a ``composer_start`` candidate to confirm it is the
+    # real composer rather than a message quoting the label. Controls whose
+    # text embeds the participant name (the Attach lines) are deliberately
+    # excluded: they would need prefix matching, and any prefix match lets
+    # quoted control text with a suffix confirm a false boundary.
+    composer_companions: tuple[str, ...]
 
 
 # How far below a composer-label candidate a companion control may sit and
@@ -495,14 +495,10 @@ _MESSAGING_CHROME_STRINGS: dict[str, _MessagingChromeTable] = {
         sidebar_end="Load more conversations",
         thread_header_prefix="Open the options list in your conversation with",
         composer_start="Maximize compose field",
-        composer_companions_exact=(
+        composer_companions=(
             "Open GIF Keyboard",
             "Open Emoji Keyboard",
             "Open send options",
-        ),
-        composer_companion_prefixes=(
-            "Attach an image to your conversation with",
-            "Attach a file to your conversation with",
         ),
     ),
 }
@@ -525,17 +521,11 @@ def strip_conversation_chrome(text: str, locale: str = "en") -> str:
 
     lines = text.splitlines()
 
-    def is_companion(idx: int) -> bool:
-        candidate = lines[idx].strip()
-        return candidate in table.composer_companions_exact or candidate.startswith(
-            table.composer_companion_prefixes
-        )
-
-    # End boundary: the last composer-label line, accepted only when another
-    # composer control follows within the next few lines. The real composer
-    # block is contiguous (label + controls observed within 6 lines), so a
-    # nearby companion confirms chrome, while a message that merely quotes
-    # the label — or mentions a control text elsewhere — falls through to
+    # End boundary: the last composer-label line, accepted only when an
+    # exact companion control follows within the next few lines. The real
+    # composer block is contiguous (label + controls observed within 6
+    # lines), so a nearby companion confirms chrome, while a message that
+    # quotes the label — or control text with any suffix — falls through to
     # the missing-marker fallback. A verbatim multi-line reproduction of the
     # block inside a message remains indistinguishable from the block itself;
     # that ambiguity is inherent to text-only stripping.
@@ -544,7 +534,7 @@ def strip_conversation_chrome(text: str, locale: str = "en") -> str:
         if lines[i].strip() != table.composer_start:
             continue
         if any(
-            is_companion(j)
+            lines[j].strip() in table.composer_companions
             for j in range(i + 1, min(i + 1 + _COMPOSER_COMPANION_WINDOW, len(lines)))
         ):
             end = i
