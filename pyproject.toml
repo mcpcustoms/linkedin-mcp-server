@@ -1,5 +1,5 @@
 [project]
-name = "linkedin-scraper-mcp"
+name = "mcp-server-linkedin"
 version = "4.13.4"
 description = "MCP server that gives AI assistants like Claude access to LinkedIn profiles, companies, and job postings through the user's own browser session."
 readme = "README.md"
@@ -44,8 +44,8 @@ Issues = "https://github.com/stickerdaniel/linkedin-mcp-server/issues"
 Changelog = "https://github.com/stickerdaniel/linkedin-mcp-server/releases"
 
 [project.scripts]
+mcp-server-linkedin = "linkedin_mcp_server.cli_main:main"
 linkedin-mcp-server = "linkedin_mcp_server.cli_main:main"
-linkedin-scraper-mcp = "linkedin_mcp_server.cli_main:main"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
